@@ -111,7 +111,6 @@
     <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx">silueta</a>
     <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx">isnet-anime</a>
     <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx">isnet-general-use</a>
-
 </div>
 </body>
 <script>
@@ -280,26 +279,7 @@
         return rgba;
     }
 
-    function thTag(outputdata,th=0.5){
-        
-        let rating="";
-        let character="";
-        let tags=[];
-        for (let i = 0; i < 10863; i++)
-        {
-            if(outputdata.data[i]>th){
-                if(vocab[i][1]==0)tags.push(vocab[i][0]);
-                if(vocab[i][1]==4)character=(vocab[i][0]);
-                if(vocab[i][1]==9)rating=(vocab[i][0]);
-            }
-        }
-        let endTime = performance.now();
-        console.log("Execution time: " + (endTime - startTime) + " ms");
-        //info.innerText=(endTime - startTime)+"ms";
-        return [tags,rating,character];
-    }
-
-    async function taggerdata(img){
+    async function rembgdata(img){
         startTime = performance.now();
         let feeds={};
         feeds[session.inputNames[0]]=new ort.Tensor('float32', img, [1, 3, imgw, imgh]);
@@ -328,13 +308,13 @@
         return data;
     }
 
-    async function tagger(ctx,th=0.5){
+    async function rembgrun(ctx){
         let dst=new Float32Array(imgsize*3);
         let imgdata=ctx.getImageData(0, 0, imgw, imgh);
         ctx.canvas.willReadFrequently = true;
         let data=imgdata.data;
         image2mat(data,imgw, imgh,0,dst);
-        return await taggerdata(dst).then(e=>imagesetalphe(data,imgw, imgh,e)).then(e=>ctx.putImageData(imgdata, 0, 0));
+        return await rembgdata(dst).then(e=>imagesetalphe(data,imgw, imgh,e)).then(e=>ctx.putImageData(imgdata, 0, 0));
     }
 </script>
 <script>
@@ -347,20 +327,25 @@
     var taggerImage=null;
     var imgw,imgh,imgsize;
     var cpumode=false;
+    var fixmaxpool=false;
+    var inputimgsize={};
     var modescal=[];
+    var lastimg;
     var modeltype={
-        'isnet-anime':          {w:1024,h:1024,scal:[1.0,1.0,1.0]},
-        'isnet-general-use':    {w:1024,h:1024,scal:[1.0,1.0,1.0]},
+        'isnet-anime':          {w:1024,h:1024,scal:[1.0,1.0,1.0],patch:{556:0,831:0,1108:0,1386:0,1664:0,4337:0,4780:0,5058:0,5336:0,5615:0,7917:0,8365:0,8646:0,8927:0,10829:0,11277:0,11558:0,13060:0,14703:0,18675:0,18956:0,21025:0,21306:0,21587:0,24056:0,24337:0,24618:0,24899:0,27768:0,28049:0,28330:0,28611:0,28892:0,}},
+        'isnet-general-use':    {w:1024,h:1024,scal:[1.0,1.0,1.0],patch:{21204:0,33952:0,46700:0,59448:0,72196:0,327166:0,348297:0,361045:0,373793:0,386541:0,597967:0,619098:0,631846:0,644594:0,812479:0,833610:0,846358:0,970708:0,1058237:0,1312000:0,1324757:0,1499117:0,1511874:0,1524631:0,1742567:0,1755324:0,1768081:0,1780838:0,2042353:0,2055110:0,2067867:0,2080624:0,2093381:0,}},
         'silueta':              {w:320,h:320},
-        'u2net':                {w:320,h:320},
-        'u2netp':               {w:320,h:320},
-        'u2net_human_seg':      {w:320,h:320},
+        'u2net':                {w:320,h:320,patch:{393:0,664:0,936:0,1210:0,1484:0,8384:0,8826:0,9103:0,9380:0,9657:0,15515:0,15963:0,16244:0,16525:0,21142:0,21590:0,21871:0,25183:0,26826:0,32608:0,32889:0,37673:0,37954:0,38235:0,44324:0,44605:0,44886:0,45167:0,52558:0,52839:0,53120:0,53401:0,53682:0,}},
+        'u2netp':               {w:320,h:320,patch:{393:0,664:0,936:0,1210:0,1484:0,8384:0,8826:0,9103:0,9380:0,9657:0,15515:0,15963:0,16244:0,16525:0,21142:0,21590:0,21871:0,25183:0,26826:0,32608:0,32889:0,37673:0,37954:0,38235:0,44324:0,44605:0,44886:0,45167:0,52558:0,52839:0,53120:0,53401:0,53682:0,}},
+        'u2net_human_seg':      {w:320,h:320,patch:{393:0,664:0,936:0,1210:0,1484:0,8384:0,8826:0,9103:0,9380:0,9657:0,15515:0,15963:0,16244:0,16525:0,21142:0,21590:0,21871:0,25183:0,26826:0,32608:0,32889:0,37673:0,37954:0,38235:0,44324:0,44605:0,44886:0,45167:0,52558:0,52839:0,53120:0,53401:0,53682:0,}},
     };
     document.addEventListener('DOMContentLoaded', function() {
-        const canvas = document.getElementById('canvas');
-        
+        const vcanvas = document.getElementById('canvas');
+        const canvas = document.createElement('canvas');
+        const zcanvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        ctx.canvas.willReadFrequently = true;
+        const vctx = vcanvas.getContext('2d');
+        const zctx = zcanvas.getContext('2d');
 
         if (typeof window.showDirectoryPicker === 'function') {
             //dirselect.style.display='block';
@@ -372,6 +357,7 @@
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 img.onload = function() {
+                    lastimg=img;
                     const canvasWidth = canvas.width;
                     const canvasHeight = canvas.height;
                     const imgWidth = img.width;
@@ -390,15 +376,53 @@
                         newWidth = imgWidth;
                         newHeight = imgHeight;
                     }
+
                     const newX = (canvasWidth - newWidth) / 2;
                     const newY = (canvasHeight - newHeight) / 2;
+                    zcanvas.width=vcanvas.width=img.width;
+                    zcanvas.height=vcanvas.height=img.height;
+                    if (imgWidth > 768 || imgHeight > 768) {
+                        if (imgWidth > imgHeight) {
+                            vcanvas.style.width=`${768}px`;
+                            vcanvas.style.height=`${768 / aspectRatio}px`;
+                        } else {
+                            vcanvas.style.height=`${768}px`;
+                            vcanvas.style.width=`${768 * aspectRatio}px`;
+                        }
+                    } else {
+                        vcanvas.style.width=`${768}px`;
+                        vcanvas.style.height=`${768}px`;
+                    }
+                    vctx.drawImage(img, 0,0);
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, newX, newY, newWidth, newHeight);
+                    //ctx.drawImage(img, newX, newY, newWidth, newHeight);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    inputimgsize={x:newX,y:newY,w:newWidth,h:newHeight};
                     newimage=true;
                     resolve();
                 };
                 img.src = URL.createObjectURL(new Blob([cachearray], { type: 'image/png' }));
             });
+        }
+        function findstring(uint8Array, searchString) {
+            const encoder = new TextEncoder();
+            const encodedSearch = encoder.encode(searchString);
+
+            let match=[];
+            let j=0;
+            for (let i = 0; i <= uint8Array.length - encodedSearch.length; i++) {
+                if(uint8Array[i]==encodedSearch[j]){
+                    if(++j==searchString.length){
+                        match.push(i-searchString.length+1);
+                        j=0;
+                    }
+                }
+                else{
+                    if(j>0)i--;
+                    j=0;
+                }
+            }
+            return match;
         }
         let imgfile=(file)=>{
             if (file) {
@@ -426,7 +450,39 @@
                             pross=readFile(file)
                         }
                         pross.then(
-                            e=>ort.InferenceSession.create(e,{executionProviders: [(!cpumode)&&navigator.gpu?'webgpu':'wasm']}))
+                            e=>{
+                                let m=new Uint8Array(e);
+                                if(fixmaxpool){
+                                    let match=findstring(m,'ceil_mode');
+                                    let maxpool=new TextEncoder().encode('MaxPool*')
+                                    let changelist=[];
+                                    for (let i = 0; i < match.length; i++) {
+                                        let pos=match[i];
+                                        let matchstr=true;
+                                        for (let j = 0; j < maxpool.length; j++) {
+                                            if(m[j+pos-11]!=maxpool[j])matchstr=false;
+                                        }
+                                        if(!matchstr)continue;
+                                        if(m[pos+10]==1){
+                                            m[pos+10]=0;
+                                            changelist.push(`${pos+10}:0,`);
+                                        }
+                                    }
+                                    console.log(`{${changelist.join('')}}`);
+                                }
+                                else{
+                                    let fn=file.name.replace('.onnx','');
+                                    if(modeltype[fn]!=null){
+                                        if(modeltype[fn].patch){
+                                            let patch=modeltype[fn].patch;
+                                            for (const [k,v] of Object.entries(patch)) {
+                                                m[k]=v;
+                                            }
+                                        }
+                                    }
+                                }
+                                return ort.InferenceSession.create(m,{executionProviders: [(!cpumode)&&navigator.gpu?'webgpu':'wasm']})
+                            })
                             //e=>ort.InferenceSession.create(e,{"executionProviders":[{"name":"webnn","deviceType":"gpu","powerPreference":"default"}],"logSeverityLevel":0}))
                         .then(e=>{
                             let fn=file.name.replace('.onnx','');
@@ -445,7 +501,22 @@
                             //    return drawImage(array).then(()=>{return tagger(ctx,wrg.value/100)}).then(e=>{return e[0]});
                             //}
                             wbt.style.display='block';
-                            wbt.onclick=e=>tagger(ctx).catch(e=>{output.innerText=e});
+                            wbt.onclick=e=>rembgrun(ctx,vctx)
+                            .then(e=>{
+                                zctx.clearRect(0,0,vcanvas.width,vcanvas.height);
+                                zctx.drawImage(canvas,0,0,vcanvas.width,vcanvas.height);
+                                
+                                const imagezData = zctx.getImageData(0, 0, zcanvas.width, zcanvas.height);
+                                const zdata = imagezData.data;
+                                const imageData = vctx.getImageData(0, 0, vcanvas.width, vcanvas.height);
+                                const data = imageData.data;
+
+                                for (let i = 0; i < data.length; i += 4) {
+                                    data[i + 3]=zdata[i+3];
+                                }
+                                vctx.putImageData(imageData, 0, 0);
+                            })
+                            .catch(e=>{output.innerText=e});
                             return e;
                         })
                     }
