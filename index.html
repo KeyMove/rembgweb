@@ -72,6 +72,17 @@
         0 0 60px rgba(255, 255, 255, 0.3);
     }
 
+    .link{
+        display: flex;
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        margin-left: 3px;
+    }
+    .link a{
+        margin-left: 3px;
+    }
+
 </style>
 <body>
 <div class="mainpanel">
@@ -92,6 +103,15 @@
             <button class="bt">去除背景</button>
         </div>
     </div>
+</div>
+<div class="link">
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx">u2net</a>
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx">u2netp</a>
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx">u2net_human_seg</a>
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx">silueta</a>
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-anime.onnx">isnet-anime</a>
+    <a href="https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx">isnet-general-use</a>
+
 </div>
 </body>
 <script>
@@ -326,6 +346,7 @@
     var newimage=false;
     var taggerImage=null;
     var imgw,imgh,imgsize;
+    var cpumode=false;
     var modescal=[];
     var modeltype={
         'isnet-anime':          {w:1024,h:1024,scal:[1.0,1.0,1.0]},
@@ -405,7 +426,7 @@
                             pross=readFile(file)
                         }
                         pross.then(
-                            e=>ort.InferenceSession.create(e,{executionProviders: [!navigator.gpu?'webgpu':'wasm']}))
+                            e=>ort.InferenceSession.create(e,{executionProviders: [(!cpumode)&&navigator.gpu?'webgpu':'wasm']}))
                             //e=>ort.InferenceSession.create(e,{"executionProviders":[{"name":"webnn","deviceType":"gpu","powerPreference":"default"}],"logSeverityLevel":0}))
                         .then(e=>{
                             let fn=file.name.replace('.onnx','');
